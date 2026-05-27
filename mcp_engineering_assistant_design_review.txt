@@ -1,0 +1,451 @@
+MCP Engineering Assistant
+System Design Document
+Version 1.0
+May 26, 2026
+
+1. Project Overview
+mcp-engineering-assistant is a GitHub-focused engineering assistant built around the Model Context Protocol (MCP). It enables developers to browse GitHub repository files, read file contents, run AI-assisted Python code review, generate non-destructive code-change proposals, edit those proposals interactively, and push approved changes back to GitHub — all from a single unified interface.
+
+The system follows an approval-first philosophy: every MCP tool call must be explicitly approved by the user before execution. This is especially critical for write operations such as file pushes, providing a safe human-in-the-loop layer over all AI-driven actions.
+
+1.1 Core Capabilities
+Browse any GitHub repository&apos;s file tree
+Read and display file content in a Monaco code editor
+Request AI-powered Python code reviews backed by local policy documents
+Generate complete revised code files based on review findings
+Compare original vs. proposed code side-by-side in a diff modal
+Edit AI-proposed code before pushing
+Push committed changes back to GitHub with dual confirmation
+Scan repositories and recent commits for basic security risks
+
+2. System Architecture
+The system is composed of three main layers that work together through a structured approval workflow:
+
+Component
+Details
+MCP Server
+Exposes engineering tools using FastMCP. Handles all GitHub API calls and AI-driven code review/generation via the Groq LLM.
+FastAPI Bridge
+HTTP bridge between the React frontend and the MCP server. Manages approval-based chat sessions, tool lifecycle, and state transformation.
+React Frontend
+Repository browser, Monaco code editor, chat approval panel, review output, code-change comparison modal, and push confirmation flow.
+
+2.1 Architecture Diagram
+??  SCREENSHOT: High-Level Architecture Diagram — React Frontend ? FastAPI Bridge ? MCP Server ? GitHub API / Groq API
+(Insert screenshot from local machine here)
+
+2.2 Separation of Concerns
+The architecture deliberately separates three distinct responsibilities:
+LLM reasoning and recommendation (Groq API via MCP tools)
+MCP tool execution (FastMCP server, stdio transport)
+User approval and UI state management (React frontend + FastAPI bridge)
+
+3. Technology Stack
+3.1 Backend
+Component
+Details
+Language
+Python
+MCP Framework
+FastMCP via the mcp package
+API Framework
+FastAPI
+Data Validation
+Pydantic
+HTTP Client
+httpx (async) for GitHub API calls
+Configuration
+python-dotenv for .env file management
+LLM Provider
+Groq API for code review and code generation
+GitHub Integration
+GitHub REST API — Contents API (read + write)
+
+3.2 Frontend
+Component
+Details
+Framework
+React 19
+Build Tool
+Vite
+Code Editor
+Monaco Editor via @monaco-editor/react
+Icons
+React Icons
+Styling
+CSS Modules / App.css (dark editor-style layout)
+Data Fetching
+Fetch API for backend calls
+
+3.3 Environment Variables
+Component
+Details
+GITHUB_TOKEN
+GitHub personal access token for repository read/write operations
+GROQ_API_KEY
+Groq API key for LLM review and code generation calls
+GROQ_MODEL
+Optional model override for the Groq API
+
+
+4. High-Level User Flows
+All flows follow the same approval pattern: the user initiates an action ? the agent creates a pending MCP tool call ? the user approves ? the tool executes ? the UI updates.
+
+4.1 Repository Browsing
+#
+Step
+Description
+1
+Enter Repository
+User inputs GitHub owner/repo in the frontend
+2
+Send Chat Request
+Frontend sends a chat request to list repository files
+3
+Pending Tool Created
+Agent creates a pending list_repository_files MCP tool call
+4
+User Approves
+User clicks Approve on the tool card in the chat panel
+5
+MCP Execution
+Backend calls MCP server over stdio; tool calls the GitHub API
+6
+File Tree Displayed
+Frontend renders the file list in the sidebar
+
+4.2 File Reading
+#
+Step
+Description
+1
+Select File
+User clicks a file in the sidebar
+2
+Tool Requested
+Agent requests read_github_file MCP tool
+3
+User Approves
+User approves the tool call
+4
+Content Fetched
+Tool reads file content from GitHub (base64 decoded)
+5
+Editor Populated
+Frontend loads the decoded content into the Monaco editor
+
+4.3 Code Review
+#
+Step
+Description
+1
+Trigger Review
+User clicks Ask Agent To Review
+2
+Deterministic Shortcut
+Frontend sends __MCP_REVIEW_PYTHON_CODE__ shortcut — no LLM tool-choice drift
+3
+Pending Tool
+Backend creates a pending review_python_code tool call
+4
+User Approves
+User approves the tool
+5
+Review Generated
+Tool loads local markdown policy resources + calls Groq; review appears in chat
+6
+Code Change Enabled
+Codechange button becomes active after review completes
+
+4.4 Code Change Proposal
+#
+Step
+Description
+1
+Request Changes
+User clicks Codechange
+2
+Tool Requested
+Frontend sends __MCP_PROPOSE_PYTHON_CODE_CHANGES__ shortcut
+3
+User Approves
+User approves propose_python_code_changes tool call
+4
+Code Generated
+Tool generates revised code via Groq; backend strips <think> blocks and markdown fences
+5
+Diff Modal Opens
+Modal shows original code (left) vs. proposed code (right)
+6
+User Edits
+User can edit the proposed code directly in the modal editor
+
+4.5 Push to GitHub
+#
+Step
+Description
+1
+Click Push
+User clicks Push in the code-change modal
+2
+Browser Confirm
+Browser shows a native confirm() dialog (first confirmation layer)
+3
+Tool Requested
+Frontend sends __MCP_PUSH_GITHUB_FILE__ shortcut
+4
+User Approves
+User approves push_github_file MCP tool (second confirmation layer)
+5
+Commit Created
+Tool uses GitHub Contents API PUT to commit the updated file
+6
+UI Updated
+Modal closes; Monaco editor shows the newly pushed code
+
+
+5. Project Folder Structure
+mcp-engineering-assistant/
++- main.py                         # MCP server entry point
++- bridge_api.py                   # FastAPI HTTP bridge
++- requirements.txt
++- README.md
++- app/
+¦  +- agents/
+¦  ¦  +- mcp_chat_agent.py         # Core approval-based agent orchestrator
+¦  ¦  +- code_review_agent.py
+¦  +- resources/                   # Local policy markdown files
+¦  ¦  +- coding_standards.md
+¦  ¦  +- security_guidelines.md
+¦  ¦  +- python_best_practices.md
+¦  ¦  +- review_constraints.md
+¦  ¦  +- resource_loader.py
+¦  ¦  +- mcp_resources.py          # Exposes resources as MCP resources
+¦  +- server/
+¦  ¦  +- mcp_instance.py           # Shared FastMCP singleton
+¦  +- tools/
+¦  ¦  +- github/
+¦  ¦  ¦  +- list_my_repositories.py
+¦  ¦  ¦  +- list_repo_files.py
+¦  ¦  ¦  +- read_file.py
+¦  ¦  ¦  +- push_file.py
+¦  ¦  +- review/
+¦  ¦  ¦  +- review_python_code.py
+¦  ¦  +- security/
+¦  ¦     +- scan_repository_security.py
+¦  ¦     +- scan_recent_commit_changes.py
+¦  +- utils/
+¦     +- github_client.py          # Async GitHub helper layer
++- frontend/
+   +- package.json
+   +- vite.config.js
+   +- index.html
+   +- src/
+      +- main.jsx
+      +- App.jsx                   # Main React app, all UI state
+      +- App.css                   # Dark editor-style global styles
+      +- services/
+      ¦  +- mcpApi.js              # sendAgentMessage / decideAgentTool wrappers
+      ¦  +- mcpClient.js
+      +- components/
+         +- Sidebar.jsx
+         +- Header.jsx
+         +- CodeViewer.jsx
+         +- ReviewPanel.jsx
+
+
+6. Key Module Reference
+6.1 main.py
+Entry point that starts the MCP server
+Imports all tool and resource modules so their FastMCP decorators register with the shared singleton
+Registered tools: GitHub browsing, file read, file push, code review, code change proposal, and security scan tools
+
+6.2 bridge_api.py
+FastAPI HTTP bridge between the React frontend and the MCP agent
+Applies permissive CORS (allow_origins=["*"]) for local development
+Exposes four endpoints used by the frontend:
+POST /list-files — list repository files
+POST /read-file — read a specific file
+POST /agent-chat — send a message or deterministic shortcut
+POST /agent-tool-decision — approve or reject a pending tool call
+
+6.3 app/server/mcp_instance.py
+Defines the shared FastMCP("EngineeringAssistant") singleton instance
+All tools and resources import and attach to this shared instance via decorators
+
+6.4 app/agents/mcp_chat_agent.py
+Core approval-based agent orchestrator — the central coordination layer
+Maintains in-memory CHAT_SESSIONS keyed by session ID
+Discovers available MCP tools by spawning python -m main via MCP stdio transport
+Sends messages to Groq with MCP tools exposed as function-calling tools
+Supports deterministic shortcut messages to bypass LLM tool-choice drift:
+__MCP_REVIEW_PYTHON_CODE__ — triggers review without LLM tool-selection
+__MCP_PROPOSE_PYTHON_CODE_CHANGES__ — triggers code change proposal
+__MCP_PUSH_GITHUB_FILE__ — triggers the push flow
+Converts raw MCP tool results into UI-friendly state fields: files, selected_file, code, review, changed_code, pushed_file
+Handles multiple messy MCP output formats: wrapped JSON, concatenated JSON objects, text blocks, structured content
+Enforces one pending tool at a time for clear user approval UX
+
+6.5 app/utils/github_client.py
+Shared async GitHub helper layer used by all GitHub tools
+get_github_file(owner, repo, path): calls Contents API, decodes base64 content, returns raw text
+update_github_file(owner, repo, path, content, message, branch): reads current file SHA, base64-encodes updated content, uses PUT to commit
+
+6.6 app/resources/*.md
+Local policy/context files loaded by the review tool to guide AI judgment:
+coding_standards.md — code style rules and structure expectations
+security_guidelines.md — security risk patterns to flag
+python_best_practices.md — Pythonic idiom and quality standards
+review_constraints.md — hard constraints (preserve API behavior, routes, config; avoid unnecessary rewrites)
+
+
+7. MCP Tool Catalog
+All tools are registered with the shared FastMCP instance and are discoverable by the agent at runtime.
+
+Tool Name
+Category
+Description
+list_repository_files
+GitHub
+Lists root-level files and folders for a given owner/repo. Returns name, path, and type for each entry.
+read_github_file
+GitHub
+Reads a specific file from GitHub. Returns name, path, and decoded content.
+push_github_file
+GitHub
+Pushes edited content back to GitHub using the Contents API PUT. Accepts an optional branch parameter. Returns commit metadata.
+list_my_repositories
+GitHub
+Lists all repositories accessible to the configured GITHUB_TOKEN.
+review_python_code
+Review
+Loads local policy markdown resources and calls Groq to produce a structured code review. Review prompt explicitly forbids code examples in output.
+propose_python_code_changes
+Review
+Generates a complete revised Python file based on the code and prior review. Strips <think> blocks and markdown fences from output.
+scan_repository_security
+Security
+Scans root-level Python files for basic risk patterns: eval(, os.system(, hardcoded API-key-like strings.
+scan_recent_commit_changes
+Security
+Fetches the latest commit from GitHub and scans changed Python files for the same risk patterns. Returns commit SHA, scanned files, and findings.
+
+8. Frontend Architecture
+8.1 App.jsx — Main Application
+App.jsx is the root component and manages all application state. Key state fields:
+Component
+Details
+owner / repo
+Currently browsed GitHub repository
+fileList
+Array of files returned by list_repository_files
+selectedFile
+Currently selected file path
+code
+Content loaded into the Monaco editor
+review
+Review output text from the review tool
+changedCode
+AI-proposed revised code
+modalOpen
+Boolean controlling the diff modal visibility
+pendingTool
+The MCP tool awaiting user approval
+chatMessages
+Array of chat messages shown in the approval panel
+
+8.2 Component Overview
+Component
+Details
+Sidebar.jsx
+Repository and file browser. Renders the owner/repo input and the file tree. Clicking a file triggers the read flow.
+Header.jsx
+Top navigation bar with app title and repository context.
+CodeViewer.jsx
+Wraps the Monaco editor. Displays the currently loaded file. Hosts the Ask Agent To Review and Codechange action buttons.
+ReviewPanel.jsx
+Chat approval panel. Renders chronological chat messages, pending tool approval cards, and the approve/reject buttons.
+
+8.3 Frontend Screenshot
+??  SCREENSHOT: Full Application UI — Sidebar (file tree) + Monaco Editor + Chat Approval Panel
+(Insert screenshot from local machine here)
+
+8.4 Code-Change Diff Modal
+??  SCREENSHOT: Diff Modal — Original Code (left pane) vs. Proposed Code (right pane) with Edit and Push buttons
+(Insert screenshot from local machine here)
+
+8.5 services/mcpApi.js
+Thin fetch wrapper exposing two functions used throughout the app:
+sendAgentMessage(sessionId, message) — POSTs to /agent-chat
+decideAgentTool(sessionId, approved) — POSTs to /agent-tool-decision
+
+
+9. Approval-Based Execution Workflow
+The approval-first design ensures no MCP tool executes without explicit human consent. The diagram below illustrates the full cycle:
+
+??  SCREENSHOT: Approval Workflow Sequence Diagram — User Action ? Agent ? Pending Tool Card ? Approve/Reject ? Execute ? UI Update
+(Insert screenshot from local machine here)
+
+Key design properties of the approval workflow:
+Only one pending tool exists per session at any time — the UI always shows a single, unambiguous decision
+Deterministic shortcuts bypass LLM tool-selection for write operations, preventing accidental or drifted tool choices
+Tool results are normalized into UI-friendly fields before updating React state
+The push flow has two distinct confirmation layers: browser confirm() and the MCP approval card
+
+10. Security and Safety Notes
+Component
+Details
+GitHub Token Scope
+GITHUB_TOKEN is stored server-side in .env only; never exposed to the frontend or browser.
+Push Confirmation
+Push operations require two confirmations: a browser confirm() dialog and an MCP approval card click.
+Session Storage
+Chat sessions are stored in-memory in the FastAPI process. Sessions reset on backend restart — no persistent database.
+CORS Policy
+Currently configured with allow_origins=["*"] for local development. Should be restricted in production.
+User Authentication
+No user authentication layer is present in the current implementation.
+Code Edit Before Push
+Users can review and modify AI-proposed code in the diff modal before committing any changes.
+Security Scan Scope
+The repository and commit security scanners perform basic pattern matching only (eval, os.system, API key patterns). They are not a substitute for a full SAST tool.
+
+11. FastAPI Bridge Endpoints
+Tool Name
+Category
+Description
+POST /list-files
+Repository
+Lists files for a given GitHub owner/repo (convenience wrapper, not session-aware)
+POST /read-file
+Repository
+Reads a file at a given path (convenience wrapper, not session-aware)
+POST /agent-chat
+Agent
+Sends a message or deterministic shortcut to the session agent; returns the updated chat state including any pending tool
+POST /agent-tool-decision
+Agent
+Approves or rejects the current pending tool call; executes the tool on approval and returns updated state
+
+
+12. Screenshot Insertion Guide
+The following screenshot placeholders appear throughout this document. Insert the corresponding captures from your local machine to complete the document.
+
+#
+Location in Document
+What to Capture
+1
+Section 2.1 — Architecture Diagram
+Full system architecture diagram (can be a draw.io or whiteboard export)
+2
+Section 8.3 — Full Application UI
+The complete app with sidebar, Monaco editor, and chat panel visible
+3
+Section 8.4 — Diff Modal
+The code comparison modal with original (left) and proposed (right) panes
+4
+Section 9 — Approval Workflow
+A sequence diagram or annotated screenshot showing the approve/reject card flow
+
+mcp-engineering-assistant  •  System Design Document  •  v1.0
+
