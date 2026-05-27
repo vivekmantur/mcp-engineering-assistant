@@ -79,6 +79,23 @@ python main.py
 
 This starts the MCP server named `EngineeringAssistant`.
 
+## Running with Docker
+
+Copy the sample environment file and add your real API keys:
+
+```bash
+cp .env.example .env
+```
+
+Start the FastAPI bridge and React frontend:
+
+```bash
+docker compose up --build
+```
+
+Open the frontend at `http://localhost:5173`. The backend API is exposed at
+`http://localhost:8000`.
+
 ## Available MCP Tools
 
 ### `list_my_repositories`

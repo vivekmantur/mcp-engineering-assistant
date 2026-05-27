@@ -2,3 +2,6 @@ mcp
 httpx
 python-dotenv
 groq
+fastapi
+uvicorn[standard]
+pydantic
